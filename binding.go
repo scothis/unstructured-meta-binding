@@ -9,64 +9,6 @@ import (
 	"k8s.io/client-go/util/jsonpath"
 )
 
-type PodTemplateSpecMapping struct {
-	// Containers defines mappings for containers.
-	Containers []ContainerMapping
-	// Volumes is a JSON Pointer to the field holding the container's environment variables. The
-	// referenced value must be `[]corev1.Volume` on the discovered container. If the value
-	// does not exist it will be created.
-	Volumes string
-}
-
-func (m *PodTemplateSpecMapping) Default() {
-	if m.Volumes == "" {
-		m.Volumes = "/spec/template/spec/volumes"
-	}
-	if len(m.Containers) == 0 {
-		m.Containers = []ContainerMapping{
-			{
-				Path: ".spec.template.spec.containers[*]",
-				Name: "/name",
-			},
-			{
-				Path: ".spec.template.spec.initContainers[*]",
-				Name: "/name",
-			},
-		}
-	}
-	for i := range m.Containers {
-		m.Containers[i].Default()
-	}
-}
-
-type ContainerMapping struct {
-	// Path is a JSONPath query for containers on the resource. The query is executed
-	// from the root of the object and is not required to return any results.
-	Path string
-	// Name is a JSON Pointer to the field holding the container's name. If specified, the
-	// referenced value must be `string` on the discovered container.
-	// +optional
-	Name string
-	// Env is a JSON Pointer to the field holding the container's environment variables. The
-	// referenced value must be `[]corev1.EnvVar` on the discovered container. If the value
-	// does not exist it will be created.
-	// +optional
-	Env string
-	// VolumeMounts is a JSON Pointer to the field holding the container's environment variables. The
-	// referenced value must be `[]corev1.VolumeMount` on the discovered container. If the value
-	// does not exist it will be created.
-	VolumeMounts string
-}
-
-func (m *ContainerMapping) Default() {
-	if m.Env == "" {
-		m.Env = "/env"
-	}
-	if m.VolumeMounts == "" {
-		m.Env = "/volumeMounts"
-	}
-}
-
 type Binding struct {
 	// Name of the binding. Shows as the path of the volume mount within the container.
 	Name string
@@ -76,7 +18,7 @@ type Binding struct {
 	Containers []string
 }
 
-func (b *Binding) Bind(obj metav1.Object, m *PodTemplateSpecMapping) error {
+func (b *Binding) Bind(obj metav1.Object, m *PodMapping) error {
 	// convert structured type to unstructured
 	u, err := runtime.DefaultUnstructuredConverter.
 		ToUnstructured(obj)

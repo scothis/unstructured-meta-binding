@@ -17,7 +17,7 @@ func TestBinding(t *testing.T) {
 	tests := []struct {
 		name        string
 		binding     Binding
-		mapping     PodTemplateSpecMapping
+		mapping     PodMapping
 		seed        client.Object
 		expected    client.Object
 		expectedErr bool
@@ -25,7 +25,7 @@ func TestBinding(t *testing.T) {
 		{
 			name:    "podspecable",
 			binding: Binding{},
-			mapping: PodTemplateSpecMapping{},
+			mapping: PodMapping{},
 			seed: &appsv1.Deployment{
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
@@ -82,7 +82,7 @@ func TestBinding(t *testing.T) {
 		{
 			name:    "almost podspecable",
 			binding: Binding{},
-			mapping: PodTemplateSpecMapping{
+			mapping: PodMapping{
 				Containers: []ContainerMapping{
 					{
 						Path: ".spec.jobTemplate.spec.template.spec.containers[*]",
@@ -158,14 +158,14 @@ func TestBinding(t *testing.T) {
 		{
 			name:     "no containers",
 			binding:  Binding{},
-			mapping:  PodTemplateSpecMapping{},
+			mapping:  PodMapping{},
 			seed:     &appsv1.Deployment{},
 			expected: &appsv1.Deployment{},
 		},
 		{
 			name:    "invalid container jsonpath",
 			binding: Binding{},
-			mapping: PodTemplateSpecMapping{
+			mapping: PodMapping{
 				Containers: []ContainerMapping{
 					{
 						Path: "[",
@@ -178,7 +178,7 @@ func TestBinding(t *testing.T) {
 		{
 			name:        "conversion error",
 			binding:     Binding{},
-			mapping:     PodTemplateSpecMapping{},
+			mapping:     PodMapping{},
 			seed:        &BadMarshalJSON{},
 			expectedErr: true,
 		},
