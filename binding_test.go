@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func TestBinding(t *testing.T) {
@@ -18,8 +17,8 @@ func TestBinding(t *testing.T) {
 		name        string
 		binding     Binding
 		mapping     PodMapping
-		seed        client.Object
-		expected    client.Object
+		seed        runtime.Object
+		expected    runtime.Object
 		expectedErr bool
 	}{
 		{
@@ -41,6 +40,12 @@ func TestBinding(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: "hello",
+									Env: []corev1.EnvVar{
+										{
+											Name:  "SERVICE_BINDING_ROOT",
+											Value: "/custom/path",
+										},
+									},
 								},
 								{
 									Name: "hello-2",
@@ -53,27 +58,55 @@ func TestBinding(t *testing.T) {
 			expected: &appsv1.Deployment{
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{},
+						},
 						Spec: corev1.PodSpec{
 							InitContainers: []corev1.Container{
 								{
-									Name:  "init-hello",
-									Image: "world",
+									Name: "init-hello",
+									Env: []corev1.EnvVar{
+										{
+											Name:  "SERVICE_BINDING_ROOT",
+											Value: "/bindings",
+										},
+									},
+									VolumeMounts: []corev1.VolumeMount{},
 								},
 								{
-									Name:  "init-hello-2",
-									Image: "world",
+									Name: "init-hello-2",
+									Env: []corev1.EnvVar{
+										{
+											Name:  "SERVICE_BINDING_ROOT",
+											Value: "/bindings",
+										},
+									},
+									VolumeMounts: []corev1.VolumeMount{},
 								},
 							},
 							Containers: []corev1.Container{
 								{
-									Name:  "hello",
-									Image: "world",
+									Name: "hello",
+									Env: []corev1.EnvVar{
+										{
+											Name:  "SERVICE_BINDING_ROOT",
+											Value: "/custom/path",
+										},
+									},
+									VolumeMounts: []corev1.VolumeMount{},
 								},
 								{
-									Name:  "hello-2",
-									Image: "world",
+									Name: "hello-2",
+									Env: []corev1.EnvVar{
+										{
+											Name:  "SERVICE_BINDING_ROOT",
+											Value: "/bindings",
+										},
+									},
+									VolumeMounts: []corev1.VolumeMount{},
 								},
 							},
+							Volumes: []corev1.Volume{},
 						},
 					},
 				},
@@ -83,16 +116,18 @@ func TestBinding(t *testing.T) {
 			name:    "almost podspecable",
 			binding: Binding{},
 			mapping: PodMapping{
+				Annotations: "/spec/jobTemplate/spec/template/metadata/annotations",
 				Containers: []ContainerMapping{
 					{
 						Path: ".spec.jobTemplate.spec.template.spec.containers[*]",
-						// Name: "/name",
+						Name: "/name",
 					},
 					{
 						Path: ".spec.jobTemplate.spec.template.spec.initContainers[*]",
-						// Name: "/name",
+						Name: "/name",
 					},
 				},
+				Volumes: "/spec/jobTemplate/spec/template/spec/volumes",
 			},
 			seed: &batchv1.CronJob{
 				Spec: batchv1.CronJobSpec{
@@ -111,6 +146,12 @@ func TestBinding(t *testing.T) {
 									Containers: []corev1.Container{
 										{
 											Name: "hello",
+											Env: []corev1.EnvVar{
+												{
+													Name:  "SERVICE_BINDING_ROOT",
+													Value: "/custom/path",
+												},
+											},
 										},
 										{
 											Name: "hello-2",
@@ -127,27 +168,55 @@ func TestBinding(t *testing.T) {
 					JobTemplate: batchv1.JobTemplateSpec{
 						Spec: batchv1.JobSpec{
 							Template: corev1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Annotations: map[string]string{},
+								},
 								Spec: corev1.PodSpec{
 									InitContainers: []corev1.Container{
 										{
-											Name:  "init-hello",
-											Image: "world",
+											Name: "init-hello",
+											Env: []corev1.EnvVar{
+												{
+													Name:  "SERVICE_BINDING_ROOT",
+													Value: "/bindings",
+												},
+											},
+											VolumeMounts: []corev1.VolumeMount{},
 										},
 										{
-											Name:  "init-hello-2",
-											Image: "world",
+											Name: "init-hello-2",
+											Env: []corev1.EnvVar{
+												{
+													Name:  "SERVICE_BINDING_ROOT",
+													Value: "/bindings",
+												},
+											},
+											VolumeMounts: []corev1.VolumeMount{},
 										},
 									},
 									Containers: []corev1.Container{
 										{
-											Name:  "hello",
-											Image: "world",
+											Name: "hello",
+											Env: []corev1.EnvVar{
+												{
+													Name:  "SERVICE_BINDING_ROOT",
+													Value: "/custom/path",
+												},
+											},
+											VolumeMounts: []corev1.VolumeMount{},
 										},
 										{
-											Name:  "hello-2",
-											Image: "world",
+											Name: "hello-2",
+											Env: []corev1.EnvVar{
+												{
+													Name:  "SERVICE_BINDING_ROOT",
+													Value: "/bindings",
+												},
+											},
+											VolumeMounts: []corev1.VolumeMount{},
 										},
 									},
+									Volumes: []corev1.Volume{},
 								},
 							},
 						},
@@ -156,11 +225,22 @@ func TestBinding(t *testing.T) {
 			},
 		},
 		{
-			name:     "no containers",
-			binding:  Binding{},
-			mapping:  PodMapping{},
-			seed:     &appsv1.Deployment{},
-			expected: &appsv1.Deployment{},
+			name:    "no containers",
+			binding: Binding{},
+			mapping: PodMapping{},
+			seed:    &appsv1.Deployment{},
+			expected: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{},
+						},
+						Spec: corev1.PodSpec{
+							Volumes: []corev1.Volume{},
+						},
+					},
+				},
+			},
 		},
 		{
 			name:    "invalid container jsonpath",
@@ -186,7 +266,7 @@ func TestBinding(t *testing.T) {
 
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
-			actual := c.seed.DeepCopyObject().(client.Object)
+			actual := c.seed.DeepCopyObject()
 			m := &c.mapping
 			m.Default()
 			err := c.binding.Bind(actual, m)
@@ -205,7 +285,7 @@ func TestBinding(t *testing.T) {
 }
 
 var (
-	_ client.Object = (*BadMarshalJSON)(nil)
+	_ runtime.Object = (*BadMarshalJSON)(nil)
 )
 
 type BadMarshalJSON struct {

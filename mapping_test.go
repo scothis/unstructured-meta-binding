@@ -8,7 +8,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 func TestMapping_ToMeta(t *testing.T) {
@@ -35,7 +35,7 @@ func TestMapping_ToMeta(t *testing.T) {
 	tests := []struct {
 		name        string
 		mapping     PodMapping
-		seed        client.Object
+		seed        runtime.Object
 		expected    MetaPodTemplate
 		expectedErr bool
 	}{
@@ -369,8 +369,8 @@ func TestMapping_FromMeta(t *testing.T) {
 		name        string
 		mapping     PodMapping
 		metadata    MetaPodTemplate
-		seed        client.Object
-		expected    client.Object
+		seed        runtime.Object
+		expected    runtime.Object
 		expectedErr bool
 	}{
 		{
@@ -631,7 +631,7 @@ func TestMapping_FromMeta(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			m := &c.mapping
 			m.Default()
-			actual := c.seed.DeepCopyObject().(client.Object)
+			actual := c.seed.DeepCopyObject()
 			err := m.FromMeta(actual, c.metadata)
 
 			if c.expectedErr && err == nil {

@@ -9,7 +9,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/jsonpath"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type PodMapping struct {
@@ -78,7 +77,7 @@ func (m *ContainerMapping) Default() {
 	}
 }
 
-func (m *PodMapping) ToMeta(obj client.Object) (MetaPodTemplate, error) {
+func (m *PodMapping) ToMeta(obj runtime.Object) (MetaPodTemplate, error) {
 	mpt := MetaPodTemplate{
 		Annotations: map[string]string{},
 		Containers:  []MetaContainer{},
@@ -135,7 +134,7 @@ func (m *PodMapping) ToMeta(obj client.Object) (MetaPodTemplate, error) {
 	return mpt, nil
 }
 
-func (m *PodMapping) FromMeta(obj client.Object, mpt MetaPodTemplate) error {
+func (m *PodMapping) FromMeta(obj runtime.Object, mpt MetaPodTemplate) error {
 	// convert structured type to unstructured
 	u, err := runtime.DefaultUnstructuredConverter.
 		ToUnstructured(obj)

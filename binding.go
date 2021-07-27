@@ -1,12 +1,8 @@
 package binding
 
 import (
-	"fmt"
-
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/util/jsonpath"
 )
 
 type Binding struct {
@@ -18,33 +14,30 @@ type Binding struct {
 	Containers []string
 }
 
-func (b *Binding) Bind(obj metav1.Object, m *PodMapping) error {
-	// convert structured type to unstructured
-	u, err := runtime.DefaultUnstructuredConverter.
-		ToUnstructured(obj)
+func (b *Binding) Bind(obj runtime.Object, m *PodMapping) error {
+	mpt, err := m.ToMeta(obj)
 	if err != nil {
 		return err
 	}
-
-	for _, containerMapping := range m.Containers {
-		cp := jsonpath.New("")
-		if err := cp.Parse(fmt.Sprintf("{%s}", containerMapping.Path)); err != nil {
-			return err
+	// TODO inject volume
+	for i := range mpt.Containers {
+		c := &mpt.Containers[i]
+		// TODO skip container if not allowed
+		serviceBindingRoot := ""
+		for _, e := range c.Env {
+			if e.Name == "SERVICE_BINDING_ROOT" {
+				serviceBindingRoot = e.Value
+				break
+			}
 		}
-		cv, err := cp.FindResults(u)
-		if err != nil {
-			// errors are expected if a path is not found
-			continue
+		if serviceBindingRoot == "" {
+			serviceBindingRoot = "/bindings"
+			c.Env = append(c.Env, corev1.EnvVar{
+				Name:  "SERVICE_BINDING_ROOT",
+				Value: serviceBindingRoot,
+			})
 		}
-		for i := range cv[0] {
-			c := cv[0][i].Interface().(map[string]interface{})
-			// TODO find/inject SERVICE_BINDING_ROOT
-			// for now set the container image to prove we can manipulate the resource
-			c["image"] = "world"
-		}
+		// TODO do other stuff with the container
 	}
-
-	// mutate original object with binding content from unstructured
-	return runtime.DefaultUnstructuredConverter.
-		FromUnstructured(u, obj)
+	return m.FromMeta(obj, mpt)
 }
