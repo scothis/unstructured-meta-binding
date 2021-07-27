@@ -92,7 +92,7 @@ func (m *PodMapping) ToMeta(obj client.Object) (MetaPodTemplate, error) {
 	}
 	uv := reflect.ValueOf(u)
 
-	if err := m.resolvePointer(m.Annotations, uv, &mpt.Annotations); err != nil {
+	if err := m.getAt(m.Annotations, uv, &mpt.Annotations); err != nil {
 		return mpt, err
 	}
 	for i := range m.Containers {
@@ -114,33 +114,79 @@ func (m *PodMapping) ToMeta(obj client.Object) (MetaPodTemplate, error) {
 
 			if m.Containers[i].Name != "" {
 				// name is optional
-				if err := m.resolvePointer(m.Containers[i].Name, cv, &mc.Name); err != nil {
+				if err := m.getAt(m.Containers[i].Name, cv, &mc.Name); err != nil {
 					return mpt, err
 				}
 			}
-			if err := m.resolvePointer(m.Containers[i].Env, cv, &mc.Env); err != nil {
+			if err := m.getAt(m.Containers[i].Env, cv, &mc.Env); err != nil {
 				return mpt, err
 			}
-			if err := m.resolvePointer(m.Containers[i].VolumeMounts, cv, &mc.VolumeMounts); err != nil {
+			if err := m.getAt(m.Containers[i].VolumeMounts, cv, &mc.VolumeMounts); err != nil {
 				return mpt, err
 			}
 
 			mpt.Containers = append(mpt.Containers, mc)
 		}
 	}
-	if err := m.resolvePointer(m.Volumes, uv, &mpt.Volumes); err != nil {
+	if err := m.getAt(m.Volumes, uv, &mpt.Volumes); err != nil {
 		return mpt, err
 	}
 
 	return mpt, nil
 }
 
-func (m *PodMapping) FromMeta(obj client.Object, meta MetaPodTemplate) error {
-	return fmt.Errorf("unimplemented")
+func (m *PodMapping) FromMeta(obj client.Object, mpt MetaPodTemplate) error {
+	// convert structured type to unstructured
+	u, err := runtime.DefaultUnstructuredConverter.
+		ToUnstructured(obj)
+	if err != nil {
+		return err
+	}
+	uv := reflect.ValueOf(u)
+
+	if err := m.setAt(m.Annotations, &mpt.Annotations, uv); err != nil {
+		return err
+	}
+	ci := 0
+	for i := range m.Containers {
+		cp := jsonpath.New("")
+		if err := cp.Parse(fmt.Sprintf("{%s}", m.Containers[i].Path)); err != nil {
+			return err
+		}
+		cr, err := cp.FindResults(u)
+		if err != nil {
+			// errors are expected if a path is not found
+			continue
+		}
+		for _, cv := range cr[0] {
+			if m.Containers[i].Name != "" {
+				if err := m.setAt(m.Containers[i].Name, &mpt.Containers[ci].Name, cv); err != nil {
+					return err
+				}
+			}
+			if err := m.setAt(m.Containers[i].Env, &mpt.Containers[ci].Env, cv); err != nil {
+				return err
+			}
+			if err := m.setAt(m.Containers[i].VolumeMounts, &mpt.Containers[ci].VolumeMounts, cv); err != nil {
+				return err
+			}
+
+			ci++
+		}
+	}
+	if err := m.setAt(m.Volumes, &mpt.Volumes, uv); err != nil {
+		return err
+	}
+
+	// mutate original object with binding content from unstructured
+	return runtime.DefaultUnstructuredConverter.
+		FromUnstructured(u, obj)
 }
 
-func (m *PodMapping) resolvePointer(ptr string, source reflect.Value, target interface{}) error {
-	v, err := m.find(source, m.keys(ptr))
+func (m *PodMapping) getAt(ptr string, source reflect.Value, target interface{}) error {
+	parent := reflect.ValueOf(nil)
+	createIfNil := false
+	v, _, _, err := m.find(source, parent, m.keys(ptr), "", createIfNil)
 	if err != nil {
 		return err
 	}
@@ -154,25 +200,65 @@ func (m *PodMapping) resolvePointer(ptr string, source reflect.Value, target int
 	return json.Unmarshal(b, target)
 }
 
+func (m *PodMapping) setAt(ptr string, value interface{}, target reflect.Value) error {
+	keys := m.keys(ptr)
+	parent := reflect.ValueOf(nil)
+	createIfNil := true
+	_, vp, lk, err := m.find(target, parent, keys, "", createIfNil)
+	if err != nil {
+		return err
+	}
+	b, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	var out interface{}
+	switch reflect.ValueOf(value).Elem().Kind() {
+	case reflect.Map:
+		out = map[string]interface{}{}
+	case reflect.Slice:
+		out = []interface{}{}
+	case reflect.String:
+		out = ""
+	default:
+		return fmt.Errorf("unsupported kind %s", reflect.ValueOf(value).Kind())
+	}
+	if err := json.Unmarshal(b, &out); err != nil {
+		return err
+	}
+	vp.SetMapIndex(reflect.ValueOf(lk), reflect.ValueOf(out))
+	return nil
+}
+
 func (m *PodMapping) keys(ptr string) []string {
 	// TODO use a real json pointer parser, this does not support escaped sequences
 	ptr = strings.TrimPrefix(ptr, "/")
 	return strings.Split(ptr, "/")
 }
 
-func (m *PodMapping) find(value reflect.Value, keys []string) (reflect.Value, error) {
-	if len(keys) == 0 {
-		return value, nil
-	}
+func (m *PodMapping) find(value, parent reflect.Value, keys []string, lastKey string, createIfNil bool) (reflect.Value, reflect.Value, string, error) {
 	if !value.IsValid() || value.IsNil() {
-		return reflect.ValueOf(nil), nil
+		if !createIfNil {
+			return reflect.ValueOf(nil), reflect.ValueOf(nil), "", nil
+		}
+		value = reflect.ValueOf(make(map[string]interface{}))
+		parent.SetMapIndex(reflect.ValueOf(lastKey), value)
+	}
+	if len(keys) == 0 {
+		return value, parent, lastKey, nil
 	}
 	switch value.Kind() {
 	case reflect.Map:
-		return m.find(value.MapIndex(reflect.ValueOf(keys[0])), keys[1:])
+		lastKey = keys[0]
+		keys = keys[1:]
+		parent = value
+		value = value.MapIndex(reflect.ValueOf(lastKey))
+		return m.find(value, parent, keys, lastKey, createIfNil)
 	case reflect.Interface:
-		return m.find(value.Elem(), keys)
+		parent = value
+		value = value.Elem()
+		return m.find(value, parent, keys, lastKey, createIfNil)
 	default:
-		return reflect.ValueOf(nil), fmt.Errorf("unhandled kind %q", value.Kind())
+		return reflect.ValueOf(nil), parent, lastKey, fmt.Errorf("unhandled kind %q", value.Kind())
 	}
 }
